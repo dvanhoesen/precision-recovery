@@ -1,30 +1,48 @@
-from __future__ import annotations
-
-from typing import Dict
-
 import torch
+from encoding import decode_words_to_scalar, decode_bits_to_scalar
 
 
-def rmse(pred: torch.Tensor, target: torch.Tensor) -> float:
+def rmse(pred, target):
     return torch.sqrt(torch.mean((pred - target) ** 2)).item()
 
 
-def mae(pred: torch.Tensor, target: torch.Tensor) -> float:
+def mae(pred, target):
     return torch.mean(torch.abs(pred - target)).item()
 
 
-def word_accuracy(pred_word: torch.Tensor, true_word: torch.Tensor) -> float:
-    pred_i = torch.round(pred_word * 65535.0)
-    true_i = torch.round(true_word * 65535.0)
-    return (pred_i == true_i).float().mean().item()
+def word_accuracy(pred_word, true_word):
+    pred_int = torch.round(pred_word * 65535.0)
+    true_int = torch.round(true_word * 65535.0)
+    return (pred_int == true_int).float().mean().item()
 
 
-def summarize_metrics(outputs: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor]) -> Dict[str, float]:
-    result = {
-        "rmse": rmse(outputs["y"], targets["y"]),
-        "mae": mae(outputs["y"], targets["y"]),
-    }
-    if "hi" in outputs and "lo" in outputs:
-        result["hi_word_acc"] = word_accuracy(outputs["hi"], targets["hi"])
-        result["lo_word_acc"] = word_accuracy(outputs["lo"], targets["lo"])
-    return result
+def compute_metrics(outputs, batch, model_name):
+    if model_name == "scalar":
+        pred_y = outputs["y"]
+        result = {
+            "rmse": rmse(pred_y, batch["y"]),
+            "mae": mae(pred_y, batch["y"]),
+        }
+        return result
+
+    if model_name in {"two_word", "coarse_residual", "sequential"}:
+        pred_y = decode_words_to_scalar(
+            outputs["hi"], outputs["lo"], word_bits=batch["word_bits"]
+        )
+        result = {
+            "rmse": rmse(pred_y, batch["y"]),
+            "mae": mae(pred_y, batch["y"]),
+            "hi_word_accuracy": word_accuracy(outputs["hi"], batch["y_hi"]),
+            "lo_word_accuracy": word_accuracy(outputs["lo"], batch["y_lo"]),
+        }
+        return result
+
+    if model_name == "bitwise":
+        pred_y = decode_bits_to_scalar(outputs["bits"])
+        result = {
+            "rmse": rmse(pred_y, batch["y"]),
+            "mae": mae(pred_y, batch["y"]),
+        }
+        return result
+
+    raise ValueError(f"Unsupported model for metrics: {model_name}")

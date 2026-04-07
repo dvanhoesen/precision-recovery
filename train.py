@@ -1,149 +1,187 @@
-from __future__ import annotations
-
-from typing import Dict, Tuple
-
+import os
 import torch
-from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from encoding import encode_fixed32, quantize_uniform
-from losses import build_loss
-from metrics import summarize_metrics
+from synthetic_data import generate_synthetic_data
 from models import build_model
-from synthetic_data import make_dataset
-from utils import ensure_dir
+from losses import build_loss_fn
+from metrics import compute_metrics
+from encoding import encode_words_from_scalar, encode_bits_from_scalar
+from utils import quantize_tensor, save_json
 
 
-def _make_bit_targets(y_int: torch.Tensor) -> torch.Tensor:
-    y_u32 = y_int & 0xFFFFFFFF
-    shifts = torch.arange(31, -1, -1, dtype=torch.int64)
-    bits = ((y_u32.unsqueeze(1) >> shifts.unsqueeze(0)) & 1).float()
-    return bits
+def prepare_batch(x, y, cfg, device):
+    mode = cfg["experiment"]["mode"]
+    model_name = cfg["model"]["name"]
+    word_bits = cfg["precision"]["word_bits"]
+    input_bits = cfg["precision"]["input_bits"]
+    quantize_inputs = cfg["precision"].get("quantize_inputs", True)
+
+    if mode == "constrained_nbit" and quantize_inputs:
+        x = quantize_tensor(x, num_bits=input_bits)
+
+    batch = {
+        "x": x.to(device),
+        "y": y.to(device),
+        "word_bits": word_bits,
+    }
+
+    if model_name in {"two_word", "coarse_residual", "sequential"}:
+        y_hi, y_lo = encode_words_from_scalar(y, word_bits=word_bits)
+        batch["y_hi"] = y_hi.to(device)
+        batch["y_lo"] = y_lo.to(device)
+
+    if model_name == "bitwise":
+        batch["y_bits"] = encode_bits_from_scalar(y, total_bits=cfg["precision"]["target_bits"]).to(device)
+
+    return batch
 
 
-def _build_split(cfg: Dict, split: str, seed_offset: int = 0) -> TensorDataset:
-    n_samples = cfg["data"][f"n_{split}"]
-    x, y, _ = make_dataset(
-        task=cfg["data"]["task"],
-        n_samples=n_samples,
-        d_in=cfg["data"]["d_in"],
-        noise_std=cfg["data"].get("noise_std", 0.0),
-        seed=cfg["seed"] + seed_offset,
-    )
-
-    x_q = quantize_uniform(x, bits=cfg["precision"]["input_bits"], x_min=-1.0, x_max=1.0)
-    hi, lo, y_int = encode_fixed32(y)
-    bits = _make_bit_targets(y_int.squeeze(1))
-    return TensorDataset(x_q.float(), y.float(), hi.float(), lo.float(), bits.float())
+def make_loader(x, y, batch_size, shuffle):
+    ds = TensorDataset(x, y)
+    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle)
 
 
-def _make_loaders(cfg: Dict) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    train_ds = _build_split(cfg, "train", seed_offset=0)
-    val_ds = _build_split(cfg, "val", seed_offset=1)
-    test_ds = _build_split(cfg, "test", seed_offset=2)
+def train_one_epoch(model, loader, optimizer, loss_fn, cfg, device):
+    model.train()
+    total_loss = 0.0
 
-    batch_size = cfg["train"]["batch_size"]
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
-    return train_loader, val_loader, test_loader
+    for x, y in loader:
+        batch = prepare_batch(x, y, cfg, device)
+        optimizer.zero_grad()
+        outputs = model(batch["x"])
+        loss = loss_fn(outputs, batch)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item() * x.size(0)
 
-
-def _step_targets(y: torch.Tensor, hi: torch.Tensor, lo: torch.Tensor, bits: torch.Tensor) -> Dict[str, torch.Tensor]:
-    return {"y": y, "hi": hi, "lo": lo, "bits": bits}
+    return total_loss / len(loader.dataset)
 
 
 @torch.no_grad()
-def _evaluate(model: nn.Module, loader: DataLoader, cfg: Dict, device: str) -> Dict[str, float]:
+def evaluate(model, loader, cfg, device):
     model.eval()
-    all_outputs = {"y": [], "hi": [], "lo": []}
-    need_bits = cfg["model"]["name"] == "bitwise"
-    if need_bits:
-        all_outputs["bits"] = []
+    model_name = cfg["model"]["name"]
 
-    all_targets = {"y": [], "hi": [], "lo": [], "bits": []}
+    preds = []
+    targets = []
+    all_hi_pred = []
+    all_lo_pred = []
+    all_hi_true = []
+    all_lo_true = []
+    all_bits_pred = []
+    all_bits_true = []
 
-    for x, y, hi, lo, bits in loader:
-        x = x.to(device)
-        y = y.to(device)
-        hi = hi.to(device)
-        lo = lo.to(device)
-        bits = bits.to(device)
-        outputs = model(x)
+    for x, y in loader:
+        batch = prepare_batch(x, y, cfg, device)
+        outputs = model(batch["x"])
 
-        all_outputs["y"].append(outputs["y"].cpu())
-        if "hi" in outputs:
-            all_outputs["hi"].append(outputs["hi"].cpu())
-            all_outputs["lo"].append(outputs["lo"].cpu())
-        if need_bits:
-            all_outputs["bits"].append(outputs["bits"].cpu())
+        preds.append(outputs)
+        targets.append(batch)
 
-        all_targets["y"].append(y.cpu())
-        all_targets["hi"].append(hi.cpu())
-        all_targets["lo"].append(lo.cpu())
-        all_targets["bits"].append(bits.cpu())
+        if model_name in {"two_word", "coarse_residual", "sequential"}:
+            all_hi_pred.append(outputs["hi"].cpu())
+            all_lo_pred.append(outputs["lo"].cpu())
+            all_hi_true.append(batch["y_hi"].cpu())
+            all_lo_true.append(batch["y_lo"].cpu())
+        elif model_name == "bitwise":
+            all_bits_pred.append(outputs["bits"].cpu())
+            all_bits_true.append(batch["y_bits"].cpu())
+        else:
+            pass
 
-    merged_outputs = {k: torch.cat(v) for k, v in all_outputs.items() if len(v) > 0}
-    merged_targets = {k: torch.cat(v) for k, v in all_targets.items() if len(v) > 0}
-    return summarize_metrics(merged_outputs, merged_targets)
+    if model_name == "scalar":
+        out = {"y": torch.cat([p["y"].cpu() for p in preds], dim=0)}
+        batch = {"y": torch.cat([b["y"].cpu() for b in targets], dim=0)}
+    elif model_name in {"two_word", "coarse_residual", "sequential"}:
+        out = {
+            "hi": torch.cat(all_hi_pred, dim=0),
+            "lo": torch.cat(all_lo_pred, dim=0),
+        }
+        batch = {
+            "y": torch.cat([b["y"].cpu() for b in targets], dim=0),
+            "y_hi": torch.cat(all_hi_true, dim=0),
+            "y_lo": torch.cat(all_lo_true, dim=0),
+            "word_bits": cfg["precision"]["word_bits"],
+        }
+    elif model_name == "bitwise":
+        out = {"bits": torch.cat(all_bits_pred, dim=0)}
+        batch = {
+            "y": torch.cat([b["y"].cpu() for b in targets], dim=0),
+            "y_bits": torch.cat(all_bits_true, dim=0),
+        }
+    else:
+        raise ValueError(model_name)
+
+    return compute_metrics(out, batch, model_name)
 
 
-def run_training(cfg: Dict, device: str = "cpu") -> Dict[str, float]:
-    output_dir = ensure_dir(cfg.get("output_dir", "outputs"))
-    train_loader, val_loader, test_loader = _make_loaders(cfg)
+def run_experiment(cfg):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = build_model(
-        model_name=cfg["model"]["name"],
+    x_train, y_train = generate_synthetic_data(
+        task=cfg["data"]["task"],
+        n_samples=cfg["data"]["n_train"],
         d_in=cfg["data"]["d_in"],
-        width=cfg["model"].get("width", 128),
-        depth=cfg["model"].get("depth", 3),
-    ).to(device)
-
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=cfg["train"].get("lr", 1e-3),
-        weight_decay=cfg["train"].get("weight_decay", 1e-4),
+        noise_std=cfg["data"]["noise_std"],
+        seed=cfg["seed"],
+    )
+    x_val, y_val = generate_synthetic_data(
+        task=cfg["data"]["task"],
+        n_samples=cfg["data"]["n_val"],
+        d_in=cfg["data"]["d_in"],
+        noise_std=cfg["data"]["noise_std"],
+        seed=cfg["seed"] + 1,
+    )
+    x_test, y_test = generate_synthetic_data(
+        task=cfg["data"]["task"],
+        n_samples=cfg["data"]["n_test"],
+        d_in=cfg["data"]["d_in"],
+        noise_std=cfg["data"]["noise_std"],
+        seed=cfg["seed"] + 2,
     )
 
-    best_val_rmse = float("inf")
+    train_loader = make_loader(x_train, y_train, cfg["train"]["batch_size"], shuffle=True)
+    val_loader = make_loader(x_val, y_val, cfg["train"]["batch_size"], shuffle=False)
+    test_loader = make_loader(x_test, y_test, cfg["train"]["batch_size"], shuffle=False)
+
+    model = build_model(cfg).to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=cfg["train"]["lr"],
+        weight_decay=cfg["train"]["weight_decay"],
+    )
+    loss_fn = build_loss_fn(cfg)
+
+    best_val = float("inf")
     best_state = None
 
-    for epoch in range(1, cfg["train"]["epochs"] + 1):
-        model.train()
-        running_loss = 0.0
-        for x, y, hi, lo, bits in train_loader:
-            x = x.to(device)
-            y = y.to(device)
-            hi = hi.to(device)
-            lo = lo.to(device)
-            bits = bits.to(device)
+    for epoch in range(cfg["train"]["epochs"]):
+        train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, cfg, device)
+        val_metrics = evaluate(model, val_loader, cfg, device)
+        val_rmse = val_metrics["rmse"]
 
-            outputs = model(x)
-            targets = _step_targets(y, hi, lo, bits)
-
-            loss = build_loss(cfg["loss"]["name"], outputs, targets, cfg["loss"])
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item() * x.size(0)
-
-        val_metrics = _evaluate(model, val_loader, cfg, device)
-        avg_train_loss = running_loss / len(train_loader.dataset)
         print(
-            f"epoch={epoch:03d} train_loss={avg_train_loss:.6f} "
-            f"val_rmse={val_metrics['rmse']:.6f} val_mae={val_metrics['mae']:.6f}"
+            f"Epoch {epoch + 1:03d} | train_loss={train_loss:.6f} | "
+            f"val_rmse={val_rmse:.6f} | val_mae={val_metrics['mae']:.6f}"
         )
 
-        if val_metrics["rmse"] < best_val_rmse:
-            best_val_rmse = val_metrics["rmse"]
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        if val_rmse < best_val:
+            best_val = val_rmse
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    ckpt_path = output_dir / "best_model.pt"
-    torch.save(model.state_dict(), ckpt_path)
-    print(f"Saved checkpoint to {ckpt_path}")
+    test_metrics = evaluate(model, test_loader, cfg, device)
+    test_metrics["experiment_mode"] = cfg["experiment"]["mode"]
+    test_metrics["model_name"] = cfg["model"]["name"]
+    test_metrics["task"] = cfg["data"]["task"]
 
-    return _evaluate(model, test_loader, cfg, device)
+    os.makedirs(cfg["output"]["save_dir"], exist_ok=True)
+    save_json(
+        os.path.join(cfg["output"]["save_dir"], f"{cfg['experiment_name']}_metrics.json"),
+        test_metrics,
+    )
+
+    return test_metrics

@@ -1,44 +1,57 @@
-from __future__ import annotations
-
-from typing import Tuple
-
 import torch
 
 
-UINT16_MAX = 65535
-INT32_SCALE = 2**31
-
-
-def quantize_uniform(x: torch.Tensor, bits: int, x_min: float = -1.0, x_max: float = 1.0) -> torch.Tensor:
-    if bits <= 0:
-        raise ValueError("bits must be positive")
-    levels = 2**bits - 1
-    x = x.clamp(x_min, x_max)
-    x_scaled = (x - x_min) / (x_max - x_min)
-    x_quant = torch.round(x_scaled * levels) / levels
-    return x_quant * (x_max - x_min) + x_min
-
-
-def encode_fixed32(y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def encode_words_from_scalar(y, word_bits=16):
     """
-    Encode y in [-1, 1) to signed 32-bit fixed point and return:
-      hi_word in [0, 1]
-      lo_word in [0, 1]
-      full signed integer representation (int64 tensor for safety)
+    y is assumed in [-1, 1]. Convert to signed fixed-point int32, then split into two words.
+    Returns normalized hi/lo words in [0, 1].
     """
-    y = y.clamp(-0.999999, 0.999999)
-    y_int = torch.round(y * INT32_SCALE).to(torch.int64)
-    y_int = torch.clamp(y_int, -(2**31), 2**31 - 1)
-    y_u32 = y_int & 0xFFFFFFFF
+    scale = (2 ** 31) - 1
+    y_scaled = torch.clamp(y, -1.0, 1.0)
+    y_int = torch.round(y_scaled * scale).to(torch.int64)
 
-    hi = ((y_u32 >> 16) & 0xFFFF).float() / UINT16_MAX
-    lo = (y_u32 & 0xFFFF).float() / UINT16_MAX
-    return hi, lo, y_int
+    y_uint = y_int & 0xFFFFFFFF
+    hi = ((y_uint >> word_bits) & ((1 << word_bits) - 1)).float()
+    lo = (y_uint & ((1 << word_bits) - 1)).float()
+
+    denom = float((1 << word_bits) - 1)
+    return hi / denom, lo / denom
 
 
-def decode_fixed32_from_words(hi: torch.Tensor, lo: torch.Tensor) -> torch.Tensor:
-    hi_i = torch.round(hi.clamp(0.0, 1.0) * UINT16_MAX).to(torch.int64)
-    lo_i = torch.round(lo.clamp(0.0, 1.0) * UINT16_MAX).to(torch.int64)
-    y_u32 = (hi_i << 16) | lo_i
-    y_i32 = torch.where(y_u32 >= 2**31, y_u32 - 2**32, y_u32)
-    return y_i32.float() / float(INT32_SCALE)
+def decode_words_to_scalar(hi, lo, word_bits=16):
+    denom = float((1 << word_bits) - 1)
+    hi_int = torch.round(torch.clamp(hi, 0.0, 1.0) * denom).to(torch.int64)
+    lo_int = torch.round(torch.clamp(lo, 0.0, 1.0) * denom).to(torch.int64)
+
+    y_uint = (hi_int << word_bits) | lo_int
+    y_int = torch.where(y_uint >= (1 << 31), y_uint - (1 << 32), y_uint)
+
+    scale = float((2 ** 31) - 1)
+    return y_int.float() / scale
+
+
+def encode_bits_from_scalar(y, total_bits=32):
+    scale = (2 ** 31) - 1
+    y_scaled = torch.clamp(y, -1.0, 1.0)
+    y_int = torch.round(y_scaled * scale).to(torch.int64)
+    y_uint = y_int & 0xFFFFFFFF
+
+    bits = []
+    for i in range(total_bits - 1, -1, -1):
+        bits.append(((y_uint >> i) & 1).float())
+    return torch.stack(bits, dim=-1)
+
+
+def decode_bits_to_scalar(bits):
+    probs = torch.clamp(bits, 0.0, 1.0)
+    hard = torch.round(probs).to(torch.int64)
+
+    total_bits = hard.shape[-1]
+    y_uint = torch.zeros(hard.shape[0], dtype=torch.int64, device=hard.device)
+    for i in range(total_bits):
+        shift = total_bits - 1 - i
+        y_uint |= (hard[:, i] << shift)
+
+    y_int = torch.where(y_uint >= (1 << 31), y_uint - (1 << 32), y_uint)
+    scale = float((2 ** 31) - 1)
+    return y_int.float() / scale
