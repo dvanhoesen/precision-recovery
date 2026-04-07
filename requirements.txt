@@ -1,0 +1,4 @@
+# Tested with Python 3.13.12
+torch>=2.2
+PyYAML>=6.0
+pytest>=8.0

@@ -1,0 +1,33 @@
+seed: 0
+output_dir: outputs
+
+data:
+  task: linear
+  d_in: 8
+  n_train: 10000
+  n_val: 2000
+  n_test: 2000
+  noise_std: 0.0
+
+precision:
+  input_bits: 16
+  target_bits: 32
+  word_bits: 16
+  encoding: fixed32
+
+model:
+  name: two_word
+  width: 128
+  depth: 3
+
+loss:
+  name: chunked
+  lambda_hi: 0.2
+  lambda_lo: 0.2
+  lambda_bits: 0.1
+
+train:
+  batch_size: 256
+  epochs: 20
+  lr: 0.001
+  weight_decay: 0.0001
