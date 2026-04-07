@@ -1,0 +1,7 @@
+{
+  "rmse": 0.012267877347767353,
+  "mae": 0.009410005994141102,
+  "experiment_mode": "quant_full",
+  "model_name": "scalar",
+  "task": "polynomial"
+}

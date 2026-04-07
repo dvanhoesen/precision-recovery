@@ -1,0 +1,7 @@
+{
+  "rmse": 0.11956988275051117,
+  "mae": 0.09627218544483185,
+  "experiment_mode": "quant_full",
+  "model_name": "scalar",
+  "task": "oscillatory"
+}

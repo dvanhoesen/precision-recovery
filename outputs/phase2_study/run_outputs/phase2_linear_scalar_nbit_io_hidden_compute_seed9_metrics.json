@@ -1,0 +1,7 @@
+{
+  "rmse": 0.00445826118811965,
+  "mae": 0.0034659148659557104,
+  "experiment_mode": "quant_full",
+  "model_name": "scalar",
+  "task": "linear"
+}

@@ -17,7 +17,8 @@ from utils import set_seed
 
 # Edit this section to customize the phase 2 study.
 BASE_CONFIG_PATH = Path("configs/base.yaml")
-OUTPUT_ROOT = Path("outputs/phase2_study")
+OUTPUT_ROOT = Path("outputs/phase2_study_longer")
+
 GENERATED_CONFIG_DIR = OUTPUT_ROOT / "generated_configs"
 RUN_OUTPUT_DIR = OUTPUT_ROOT / "run_outputs"
 
@@ -31,8 +32,8 @@ RANKING_OVERALL_JSON_PATH = OUTPUT_ROOT / "ranking_overall.json"
 RANKING_TXT_PATH = OUTPUT_ROOT / "ranking.txt"
 
 TASKS = ["linear", "polynomial", "multiplicative", "oscillatory"]
-SEEDS = list(range(10))
-EPOCHS_OVERRIDE = 50
+SEEDS = list(range(1234, 1240, 1))
+EPOCHS_OVERRIDE = 100
 
 LOSS_VARIANTS = [
     {"name": "base", "lambda_hi": 0.2, "lambda_lo": 0.2},

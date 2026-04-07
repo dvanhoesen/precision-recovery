@@ -1,0 +1,9 @@
+{
+  "rmse": 0.03694651648402214,
+  "mae": 0.02930425852537155,
+  "hi_word_accuracy": 0.0005000000237487257,
+  "lo_word_accuracy": 0.0,
+  "experiment_mode": "quant_full",
+  "model_name": "two_word",
+  "task": "polynomial"
+}

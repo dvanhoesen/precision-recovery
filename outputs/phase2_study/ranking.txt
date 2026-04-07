@@ -1,0 +1,36 @@
+Phase 2 ranking
+Sorted by rmse_mean then mae_mean
+
+Per-task ranking
+- Task: linear
+  01. scalar_fp32_reference | mode=float_full | loss=base | model=scalar | rmse=0.002959±0.000484 | mae=0.001887±0.000322
+  02. scalar_nbit_io_hidden_compute | mode=quant_full | loss=base | model=scalar | rmse=0.004914±0.000759 | mae=0.003772±0.000586
+  03. two_word_nbit_io_hidden_compute | mode=quant_full | loss=base | model=two_word | rmse=0.190363±0.049905 | mae=0.096590±0.050960
+  04. two_word_nbit_io_only | mode=quant_io | loss=base | model=two_word | rmse=0.231168±0.041839 | mae=0.144335±0.040075
+
+- Task: multiplicative
+  01. scalar_fp32_reference | mode=float_full | loss=base | model=scalar | rmse=0.007139±0.002037 | mae=0.003023±0.000355
+  02. scalar_nbit_io_hidden_compute | mode=quant_full | loss=base | model=scalar | rmse=0.007277±0.001994 | mae=0.003226±0.000289
+  03. two_word_nbit_io_only | mode=quant_io | loss=base | model=two_word | rmse=0.178670±0.013018 | mae=0.103131±0.009683
+  04. two_word_nbit_io_hidden_compute | mode=quant_full | loss=base | model=two_word | rmse=0.190039±0.008608 | mae=0.111174±0.007062
+
+- Task: oscillatory
+  01. scalar_fp32_reference | mode=float_full | loss=base | model=scalar | rmse=0.072112±0.029444 | mae=0.058341±0.025354
+  02. scalar_nbit_io_hidden_compute | mode=quant_full | loss=base | model=scalar | rmse=0.135339±0.012206 | mae=0.109465±0.010328
+  03. two_word_nbit_io_only | mode=quant_io | loss=base | model=two_word | rmse=0.519114±0.011170 | mae=0.421682±0.010609
+  04. two_word_nbit_io_hidden_compute | mode=quant_full | loss=base | model=two_word | rmse=0.569962±0.010787 | mae=0.476774±0.011852
+
+- Task: polynomial
+  01. scalar_fp32_reference | mode=float_full | loss=base | model=scalar | rmse=0.012303±0.000619 | mae=0.009406±0.000472
+  02. scalar_nbit_io_hidden_compute | mode=quant_full | loss=base | model=scalar | rmse=0.012398±0.000556 | mae=0.009416±0.000449
+  03. two_word_nbit_io_only | mode=quant_io | loss=base | model=two_word | rmse=0.038203±0.000895 | mae=0.030468±0.000750
+  04. two_word_nbit_io_hidden_compute | mode=quant_full | loss=base | model=two_word | rmse=0.038457±0.001259 | mae=0.030408±0.000993
+
+Overall ranking
+01. scalar_fp32_reference | mode=float_full | loss=base | model=scalar | rmse=0.023628±0.031876 | mae=0.018164±0.026622 | avg_task_rank=1.00
+02. scalar_nbit_io_hidden_compute | mode=quant_full | loss=base | model=scalar | rmse=0.039982±0.056140 | mae=0.031470±0.045940 | avg_task_rank=2.00
+03. two_word_nbit_io_only | mode=quant_io | loss=base | model=two_word | rmse=0.241789±0.178522 | mae=0.174904±0.151470 | avg_task_rank=3.25
+04. two_word_nbit_io_hidden_compute | mode=quant_full | loss=base | model=two_word | rmse=0.247205±0.200424 | mae=0.178736±0.178778 | avg_task_rank=3.75
+
+Best overall: scalar_fp32_reference (rmse_mean=0.023628)
+Best constrained: scalar_nbit_io_hidden_compute (rmse_mean=0.039982)

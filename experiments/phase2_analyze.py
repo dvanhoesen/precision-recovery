@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 
 # Edit these paths/settings if needed.
-PHASE2_ROOT = Path("outputs/phase2_study")
+PHASE2_ROOT = Path("outputs/phase2_study_longer")
 RAW_RESULTS_PATH = PHASE2_ROOT / "raw_results.jsonl"
 SUMMARY_BY_TASK_PATH = PHASE2_ROOT / "summary_by_task.json"
 SUMMARY_OVERALL_PATH = PHASE2_ROOT / "summary_overall.json"

@@ -1,0 +1,9 @@
+{
+  "rmse": 0.5620756149291992,
+  "mae": 0.46618372201919556,
+  "hi_word_accuracy": 0.0,
+  "lo_word_accuracy": 0.0,
+  "experiment_mode": "quant_full",
+  "model_name": "two_word",
+  "task": "oscillatory"
+}
