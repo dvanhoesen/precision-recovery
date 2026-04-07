@@ -1,0 +1,9 @@
+{
+  "rmse": 0.1925794929265976,
+  "mae": 0.08848995715379715,
+  "hi_word_accuracy": 0.0005000000237487257,
+  "lo_word_accuracy": 0.0,
+  "experiment_mode": "quant_full",
+  "model_name": "two_word",
+  "task": "linear"
+}

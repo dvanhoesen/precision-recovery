@@ -9,7 +9,10 @@ def scalar_loss(outputs, batch):
 
 def two_word_loss(outputs, batch, lambda_hi=0.2, lambda_lo=0.2):
     pred_y = decode_words_to_scalar(
-        outputs["hi"], outputs["lo"], word_bits=batch["word_bits"]
+        outputs["hi"],
+        outputs["lo"],
+        word_bits=batch["word_bits"],
+        target_bits=batch["target_bits"],
     )
     recon_loss = F.mse_loss(pred_y, batch["y"])
     hi_loss = F.mse_loss(outputs["hi"], batch["y_hi"])

@@ -1,0 +1,5 @@
+condition_name,loss_variant_name,experiment_mode,model_name,task,n,rmse_mean,rmse_std,mae_mean,mae_std,hi_word_accuracy_mean,hi_word_accuracy_std,lo_word_accuracy_mean,lo_word_accuracy_std
+scalar_fp32_reference,base,float_full,scalar,linear,3,0.00602039663741986,0.0004271206845797708,0.004671674532194932,0.0003801949491006055,,,,
+scalar_nbit_io_hidden_compute,base,quant_full,scalar,linear,3,0.008649969473481178,0.0005939813672426169,0.006807037318746249,0.0004927479435071547,,,,
+two_word_nbit_io_hidden_compute,base,quant_full,two_word,linear,3,0.20012842615445456,0.00844858405134906,0.0942967211206754,0.006541196960287826,0.00016666667458290854,0.000288675148306146,0.0,0.0
+two_word_nbit_io_only,base,quant_io,two_word,linear,3,0.23325914641221365,0.05298294990787943,0.13953974346319833,0.057441449621181674,0.0003333333491658171,0.000577350296612292,0.0,0.0

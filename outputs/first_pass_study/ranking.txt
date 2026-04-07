@@ -1,0 +1,10 @@
+First-pass ranking
+Sorted by rmse_mean then mae_mean
+
+01. scalar_fp32_reference | mode=float_full | loss=base | model=scalar | task=linear | rmse=0.006020±0.000427 | mae=0.004672±0.000380
+02. scalar_nbit_io_hidden_compute | mode=quant_full | loss=base | model=scalar | task=linear | rmse=0.008650±0.000594 | mae=0.006807±0.000493
+03. two_word_nbit_io_hidden_compute | mode=quant_full | loss=base | model=two_word | task=linear | rmse=0.200128±0.008449 | mae=0.094297±0.006541
+04. two_word_nbit_io_only | mode=quant_io | loss=base | model=two_word | task=linear | rmse=0.233259±0.052983 | mae=0.139540±0.057441
+
+Best overall: scalar_fp32_reference (rmse_mean=0.006020)
+Best constrained: scalar_nbit_io_hidden_compute (rmse_mean=0.008650)
