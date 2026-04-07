@@ -1,5 +1,5 @@
-# Custom docs
-study_notes.docx
+# Ignore custom folders
+notes/
 
 # OS
 .DS_Store
